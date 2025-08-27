@@ -21,7 +21,10 @@
     "rn-nordic-mcu-fs-manager",
     "RnNordicMcuFsManager"
   ],
-  "repository": "https://github.com/coded-lines/rn-nordic-mcu-fs-manager",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coded-lines/rn-nordic-mcu-fs-manager.git"
+  },
   "bugs": {
     "url": "https://github.com/coded-lines/rn-nordic-mcu-fs-manager/issues"
   },
