@@ -10,12 +10,9 @@ Pod::Spec.new do |s|
   s.license        = package['license']
   s.author         = package['author']
   s.homepage       = package['homepage']
-  s.platforms      = {
-    :ios => '15.1',
-    :tvos => '15.1'
-  }
+  s.platform       = :ios, '13.0'
   s.swift_version  = '5.4'
-  s.source         = { git: 'https://github.com/coded-lines/rn-nordic-mcu-fs-manager' }
+  s.source         = { :path => '.' }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
