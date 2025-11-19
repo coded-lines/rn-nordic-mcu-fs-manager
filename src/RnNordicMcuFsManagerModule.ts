@@ -1,18 +1,37 @@
 import { NativeModule, requireNativeModule } from "expo";
 
+export type DownloadProgress = {
+  currentBytes: number;
+  totalBytes: number;
+  timestamp: number;
+};
+
+export type DownloadError = {
+  code: string;
+  message: string;
+  stack?: string;
+};
+
+export type DownloadCanceled = {
+  canceled: boolean;
+};
+
+export type DownloadResult = {
+  data: number[];
+  size: number;
+};
+
 declare class RnNordicMcuFsManagerModule extends NativeModule {
-  initialize(bleId: string): void;
-  destroy(): void;
   fileDownload(
+    deviceId: string,
     filename: string,
-    onDownloadProgressChanged: (progress: number) => void,
-    onDownloadFailed: (error: string) => void,
-    onDownloadCanceled: () => void,
-    onDownloadCompleted: (bytearray: number[]) => void
+    onDownloadProgressChanged?: (progress: DownloadProgress) => void,
+    onDownloadFailed?: (error: DownloadError) => void,
+    onDownloadCanceled?: (info: DownloadCanceled) => void,
+    onDownloadCompleted?: (result: DownloadResult) => void,
   ): void;
 }
 
-// This call loads the native module object from the JSI.
 export default requireNativeModule<RnNordicMcuFsManagerModule>(
-  "RnNordicMcuFsManager"
+  "RnNordicMcuFsManager",
 );

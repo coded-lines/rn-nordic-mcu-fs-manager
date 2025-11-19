@@ -16,75 +16,179 @@ import io.runtime.mcumgr.transfer.DownloadCallback
 private const val TAG = "RnNordicMcuFsManagerModule"
 
 class RnNordicMcuFsManagerModule : Module() {
-    private lateinit var fsManager: FsManager
-    private lateinit var device: BluetoothDevice
-    private lateinit var transport: McuMgrTransport
 
-    private val context
-        get() = requireNotNull(appContext.reactContext) { "React Application Context is null" }
+    private val context: Context
+        get() = appContext.reactContext
+            ?: appContext.currentActivity
+            ?: throw IllegalStateException("React or Activity context is null")
 
-    private fun getBluetoothDevice(macAddress: String?): BluetoothDevice {
+    private fun getBluetoothDevice(macAddress: String): BluetoothDevice {
         val bluetoothManager =
-            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter ?: throw Exception("No bluetooth adapter")
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                ?: throw IllegalStateException("BluetoothManager not available")
 
-        return adapter.getRemoteDevice(macAddress)
+        val adapter = bluetoothManager.adapter
+            ?: throw IllegalStateException("No Bluetooth adapter available")
+
+        return try {
+            adapter.getRemoteDevice(macAddress)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid MAC / device id: $macAddress", e)
+        }
     }
 
-    // Each module class must implement the definition function. The definition consists of components
-    // that describes the module's functionality and behavior.
-    // See https://docs.expo.dev/modules/module-api for more details about available components.
+    private fun safeInvokeCallback(
+        callback: JavaScriptFunction<Any?>?,
+        payload: Any? = null
+    ) {
+        if (callback == null) return
+
+        appContext.executeOnJavaScriptThread {
+            try {
+                if (payload != null) {
+                    callback.invoke(payload)
+                } else {
+                    callback.invoke()
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error while invoking JS callback", t)
+            }
+        }
+    }
+
     override fun definition() = ModuleDefinition {
-        // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
-        // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
-        // The module will be accessible from `requireNativeModule('RnNordicMcuFsManager')` in JavaScript.
         Name("RnNordicMcuFsManager")
 
-        Function("initialize") { macAddress: String ->
-            device = getBluetoothDevice(macAddress)
-            transport = McuMgrBleTransport(context, device)
-            fsManager = FsManager(transport as McuMgrBleTransport)
-            Log.d(TAG, "Initialized")
-        }
-
+        /**
+         * destroy() – no-op for stateless implementation, kept for API compatibility.
+         */
         Function("destroy") {
-            fsManager.closeAll()
-            transport.release()
+            Log.d(TAG, "destroy() called – stateless implementation, nothing to clean up")
         }
 
-        Function("fileDownload") { filename: String, progressCallback: JavaScriptFunction<Unit>, failedCallback: JavaScriptFunction<Unit>, canceledCallback: JavaScriptFunction<Unit>, completedCallback: JavaScriptFunction<Unit> ->
+        /**
+         * fileDownload(
+         *   deviceId: string,
+         *   filename: string,
+         *   onDownloadProgressChanged?: (progress: { currentBytes, totalBytes, timestamp }) => void,
+         *   onDownloadFailed?: (error: { code, message, stack? }) => void,
+         *   onDownloadCanceled?: (info: { canceled: true }) => void,
+         *   onDownloadCompleted?: (result: { data: number[], size: number }) => void
+         * )
+         */
+        Function("fileDownload") {
+                macAddress: String,
+                filename: String,
+                onDownloadProgressChanged: JavaScriptFunction<Any?>?,
+                onDownloadFailed: JavaScriptFunction<Any?>?,
+                onDownloadCanceled: JavaScriptFunction<Any?>?,
+                onDownloadCompleted: JavaScriptFunction<Any?>?
+            ->
+
+            Log.d(TAG, "fileDownload() called with mac=$macAddress, filename=$filename")
+
+            val device: BluetoothDevice
+            val transport: McuMgrTransport
+            val manager: FsManager
+
+            try {
+                device = getBluetoothDevice(macAddress)
+                transport = McuMgrBleTransport(context, device)
+                manager = FsManager(transport)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create transport / FsManager", e)
+                val payload = mapOf(
+                    "code" to "INIT_ERROR",
+                    "message" to (e.message ?: "Failed to init transport or FsManager"),
+                    "stack" to e.stackTraceToString()
+                )
+                safeInvokeCallback(onDownloadFailed, payload)
+                throw e
+            }
+
+            fun releaseTransport() {
+                try {
+                    (transport as? McuMgrBleTransport)?.release()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error releasing transport", e)
+                }
+            }
+
             val downloadCallback = object : DownloadCallback {
-                override fun onDownloadProgressChanged(var1: Int, var2: Int, var3: Long) {
-                    appContext.executeOnJavaScriptThread {
-                        progressCallback(var1, var2, var3)
-                    }
-                    Log.d(TAG, "Progress changed, $var1, $var2, $var3")
+                override fun onDownloadProgressChanged(
+                    current: Int,
+                    total: Int,
+                    timestamp: Long
+                ) {
+                    Log.d(
+                        TAG,
+                        "Download progress: current=$current, total=$total, timestamp=$timestamp"
+                    )
+
+                    val payload = mapOf(
+                        "currentBytes" to current,
+                        "totalBytes" to total,
+                        "timestamp" to timestamp
+                    )
+
+                    safeInvokeCallback(onDownloadProgressChanged, payload)
                 }
 
-                override fun onDownloadFailed(var1: McuMgrException) {
-                    appContext.executeOnJavaScriptThread {
-                        failedCallback(var1)
-                    }
-                    Log.d(TAG, "Download failed")
+                override fun onDownloadFailed(e: McuMgrException) {
+                    Log.e(TAG, "Download failed", e)
+
+                    val payload = mapOf(
+                        "code" to "MCU_MGR_DOWNLOAD_FAILED",
+                        "message" to (e.message ?: "Unknown McuMgrException"),
+                        "stack" to e.stackTraceToString()
+                    )
+
+                    safeInvokeCallback(onDownloadFailed, payload)
+                    releaseTransport()
                 }
 
                 override fun onDownloadCanceled() {
-                    appContext.executeOnJavaScriptThread {
-                        canceledCallback()
-                    }
-                    Log.d(TAG, "Download canceled")
+                    Log.w(TAG, "Download canceled")
+
+                    val payload = mapOf(
+                        "canceled" to true
+                    )
+
+                    safeInvokeCallback(onDownloadCanceled, payload)
+                    releaseTransport()
                 }
 
-                override fun onDownloadCompleted(var1: ByteArray) {
-                    Log.d(TAG, "Download completed $var1")
-                    appContext.executeOnJavaScriptThread {
-                        completedCallback(var1)
-                    }
-                }
+                override fun onDownloadCompleted(data: ByteArray) {
+                    Log.d(TAG, "Download completed, bytes=${data.size}")
 
+                    val bytes: List<Int> = data.map { it.toInt() and 0xFF }
+
+                    val payload = mapOf(
+                        "data" to bytes,
+                        "size" to data.size
+                    )
+
+                    safeInvokeCallback(onDownloadCompleted, payload)
+                    releaseTransport()
+                }
             }
 
-            fsManager.fileDownload(filename, downloadCallback)
+            try {
+                Log.d(TAG, "Starting file download over mcumgr")
+                manager.fileDownload(filename, downloadCallback)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting file download for: $filename", e)
+
+                val payload = mapOf(
+                    "code" to "START_DOWNLOAD_ERROR",
+                    "message" to (e.message ?: "Unknown error starting download"),
+                    "stack" to e.stackTraceToString()
+                )
+
+                safeInvokeCallback(onDownloadFailed, payload)
+                releaseTransport()
+                throw e
+            }
         }
     }
 }

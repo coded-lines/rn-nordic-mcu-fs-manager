@@ -1,5 +1,10 @@
+import React from "react";
 import { Alert, Button, ScrollView, Text, View } from "react-native";
-import RnNordicMcuFsManager from "rn-nordic-mcu-fs-manager";
+import RnNordicMcuFsManager, {
+  type DownloadProgress,
+  type DownloadError,
+  type DownloadResult,
+} from "rn-nordic-mcu-fs-manager";
 
 type Props = {
   deviceId: string;
@@ -8,21 +13,39 @@ type Props = {
 const DownloadScreen: React.FC<Props> = ({ deviceId }) => {
   const fsManager = RnNordicMcuFsManager;
 
-  const onDownloadProgressChanged = (progress: number) => {
-    console.log("Progress: ", progress);
+  const onDownloadProgressChanged = (progress: DownloadProgress) => {
+    const { currentBytes, totalBytes } = progress;
+    const percent =
+      totalBytes > 0 ? ((currentBytes / totalBytes) * 100).toFixed(1) : "0.0";
+
+    console.log(
+      `Progress: ${currentBytes}/${totalBytes} (${percent}%)`,
+      progress,
+    );
   };
-  const onDownloadFailed = (error: string) => {
-    console.log("Failed: ", error);
+
+  const onDownloadFailed = (error: DownloadError) => {
+    console.log("Failed:", error);
+    Alert.alert(
+      "Download Failed",
+      error.message || "Unknown error downloading file",
+    );
   };
+
   const onDownloadCanceled = () => {
     console.log("Canceled");
+    Alert.alert("Download Canceled");
   };
-  const onDownloadCompleted = (bytearray: number[]) => {
-    fsManager.destroy();
-    const result = String.fromCharCode(...bytearray);
-    console.log("Completed", result);
-    Alert.alert("Download Completed", result);
+
+  const onDownloadCompleted = (result: DownloadResult) => {
+    // result.data is number[] (0–255)
+    const text = String.fromCharCode(...result.data);
+    console.log("Completed, bytes:", result.size);
+    console.log("Result text:", text);
+
+    Alert.alert("Download Completed", text);
   };
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.header}>Module API Example</Text>
@@ -30,10 +53,21 @@ const DownloadScreen: React.FC<Props> = ({ deviceId }) => {
         <Button
           title="Download File"
           onPress={async () => {
+            if (!deviceId) {
+              Alert.alert("Error", "No deviceId provided");
+              return;
+            }
+
             try {
-              console.log("JS: Downloading file");
-              fsManager.initialize(deviceId);
+              console.log(
+                "JS: Starting file download for device:",
+                deviceId,
+                "file:",
+                "/lfs1/Lorem_1000.txt",
+              );
+
               fsManager.fileDownload(
+                deviceId,
                 "/lfs1/Lorem_1000.txt",
                 onDownloadProgressChanged,
                 onDownloadFailed,
@@ -41,8 +75,9 @@ const DownloadScreen: React.FC<Props> = ({ deviceId }) => {
                 onDownloadCompleted,
               );
             } catch (error) {
-              console.log("JS: Error downloading file");
+              console.log("JS: Error calling fileDownload");
               console.error(error);
+              Alert.alert("Error", String(error));
             }
           }}
         />
@@ -50,6 +85,7 @@ const DownloadScreen: React.FC<Props> = ({ deviceId }) => {
     </ScrollView>
   );
 };
+
 function Group(props: { name: string; children: React.ReactNode }) {
   return (
     <View style={styles.group}>
