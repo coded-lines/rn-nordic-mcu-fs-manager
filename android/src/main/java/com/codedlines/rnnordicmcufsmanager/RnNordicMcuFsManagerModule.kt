@@ -88,7 +88,11 @@ class RnNordicMcuFsManagerModule : Module() {
             Log.d(TAG, "fileDownload() called with mac=$macAddress, filename=$filename")
 
             val device: BluetoothDevice
-            val transport: McuMgrTransport
+            val transport = McuMgrBleTransport(context, device).apply {
+                setInitialMtu(498)            // default, but make it explicit
+                setMaxPacketLength(498)       // allow full-size SMP frames
+                requestConnPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+            }
             val manager: FsManager
 
             try {
