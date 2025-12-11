@@ -1,13 +1,13 @@
 package com.codedlines.rnnordicmcufsmanager
 
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.util.Log
 import expo.modules.kotlin.jni.JavaScriptFunction
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import io.runtime.mcumgr.McuMgrTransport
 import io.runtime.mcumgr.ble.McuMgrBleTransport
 import io.runtime.mcumgr.exception.McuMgrException
 import io.runtime.mcumgr.managers.FsManager
@@ -76,28 +76,28 @@ class RnNordicMcuFsManagerModule : Module() {
          *   onDownloadCompleted?: (result: { data: number[], size: number }) => void
          * )
          */
-        Function("fileDownload") {
-                macAddress: String,
-                filename: String,
-                onDownloadProgressChanged: JavaScriptFunction<Any?>?,
-                onDownloadFailed: JavaScriptFunction<Any?>?,
-                onDownloadCanceled: JavaScriptFunction<Any?>?,
-                onDownloadCompleted: JavaScriptFunction<Any?>?
+        Function("fileDownload") { macAddress: String,
+                                   filename: String,
+                                   onDownloadProgressChanged: JavaScriptFunction<Any?>?,
+                                   onDownloadFailed: JavaScriptFunction<Any?>?,
+                                   onDownloadCanceled: JavaScriptFunction<Any?>?,
+                                   onDownloadCompleted: JavaScriptFunction<Any?>?
             ->
 
             Log.d(TAG, "fileDownload() called with mac=$macAddress, filename=$filename")
 
             val device: BluetoothDevice
-            val transport = McuMgrBleTransport(context, device).apply {
-                setInitialMtu(498)            // default, but make it explicit
-                setMaxPacketLength(498)       // allow full-size SMP frames
-                requestConnPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
-            }
+            val transport: McuMgrBleTransport
             val manager: FsManager
 
             try {
                 device = getBluetoothDevice(macAddress)
-                transport = McuMgrBleTransport(context, device)
+                transport = McuMgrBleTransport(context, device).apply {
+                    // Ask for the largest MTU/packet length and high connection priority up front.
+                    setInitialMtu(498)
+                    maxPacketLength = 498
+                    requestConnPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                }
                 manager = FsManager(transport)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create transport / FsManager", e)
