@@ -6,6 +6,7 @@ React Native Nordic MCU Filesystem Manager (currently supports only download fun
 
 - [Installation](#installation-in-managed-expo-projects)
 - [Usage](#usage)
+- [Developer Documentation](#developer-documentation)
 - [API Documentation](#api)
 - [Contributing](#contributing)
 - [Credits](#credits)
@@ -96,12 +97,15 @@ Make sure to check the documentation for all available functions and their expec
 
 ---
 
+## Developer Documentation
+
+See `DEVELOPER.md` for local setup, architecture notes, and contributor guidance.
+
 ## API Documentation
 
 - [initialize](#initialize)
 - [destroy](#destroy)
 - [fileDownload](#file-download)
-
 
 ## Methods
 
@@ -172,5 +176,3 @@ git clone git@github.com:coded-lines/rn-nordic-mcu-fs-manager.git && cd rn-nordi
 ### Credits
 
 This project is heavily inspired by and takes code from [react-native-mcu-manager](https://github.com/PlayerData/react-native-mcu-manager)
-
-
